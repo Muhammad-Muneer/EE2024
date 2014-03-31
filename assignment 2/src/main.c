@@ -10,7 +10,7 @@
 #include "Calibration.h"
 #include "Standby.h"
 #include "Active.h"
-// nickolas's first commit
+
 int resetFlag;
 int isSafe;
 
