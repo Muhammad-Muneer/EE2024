@@ -23,8 +23,10 @@
 #include <string.h>
 #include <stdio.h>
 
+extern uint8_t gAccRead; 
+extern int isFrequent;
 void initActive();
-void runActive();
+void runActive(int freq);
 void switchDisplayToStandby();
 void switchDisplayToCalibrate();
 

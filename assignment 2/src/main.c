@@ -13,9 +13,9 @@
 
 int resetFlag;
 int isSafe;
+uint8_t gAccRead;
 
 int main() {
-	uint8_t gAccRead;
 	int isNormal;
 	while (1) {
 		calibrateInit();
@@ -28,11 +28,10 @@ int main() {
 				if (isSafe && isNormal){
 					initActive();
 					while(1){
-						//initLight();
-						//initActive();
+						int freq = calculateFreq();
 						runTempAndLight(&isNormal);
-						printf("Temp: %d, Rad: %d\n",isNormal,isSafe);
-						runActive();
+						//printf("Temp: %d, Rad: %d\n",isNormal,isSafe);
+						runActive(freq);
 						if (resetFlag)
 							break;
 						if(!isNormal || !isSafe){
@@ -49,27 +48,3 @@ int main() {
 		}
 	}
 }
-
-/*****************
- * 	Pseudo code
- * int main() {
-	calibrateInit();
-	while (1) {
-		displayCalibrate();
-		if standby button is pressed {
-			while 1 {
-				if reset is pressed break
-				initStandby
-				standbyRun(&temp,&light)
-				if( temp && light is within safety) {
-					while 1 {
-						if reset is pressed break
-						goes to active mode
-					}
-					break;
-				}
-			}
-		}
-	}
-}
- * */

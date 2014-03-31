@@ -13,7 +13,8 @@
 #define CONDITION_SAFE "Safe "
 #define CONDITION_ACTIVE "Active"
 
-static MODE;
+int isFrequent;
+static int MODE;
 
 static void displayModeAct() {
 	char modeName[] = "Active ";
@@ -37,20 +38,13 @@ static void disableSegment(){
 }
 
 void initActive() {
-	int temp,light;
+	isFrequent = 0;
 	enableAcc();
 	disableSegment();
 	displayActive();
 	MODE = ACTIVE_MODE;
-	//NVIC_EnableIRQ(EINT3_IRQn);
-	LPC_GPIOINT -> IO2IntClr = 1<<5;
-	light_clearIrqStatus();
-	//printf("enabling int3 @ initActive\n");
-}
-
-static int calculateFreq(){
-	// stub
-	return 5;
+	//LPC_GPIOINT -> IO2IntClr = 1<<5;
+	//light_clearIrqStatus();
 }
 
 static int safe(int freq){
@@ -90,11 +84,16 @@ void leaveWarningMode(){
 }
 
 
-void runActive(){
-	int freq = calculateFreq();
-	if(!safe(freq) && MODE == ACTIVE_MODE){
+void runActive(int freq){
+	if(!safe(freq)){
+		isFrequent++;
+	}else{
+		isFrequent = 0;
+	}
+
+	if(isFrequent == 3 && MODE == ACTIVE_MODE){
 		enterWarningMode();
-	}else if(safe(freq) && MODE == WARNING_MODE){
+	}else if(isFrequent < 3 && MODE == WARNING_MODE){
 		leaveWarningMode();
 	}
 }

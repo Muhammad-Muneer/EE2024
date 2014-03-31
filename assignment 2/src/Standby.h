@@ -33,8 +33,11 @@
 
 extern int resetFlag;
 extern int isSafe;
+extern uint8_t gAccRead;
+
 void standbyInit();
 void runTempAndLight(int* tempBool);
+int calculateFreq();
 
 #endif /* STANDBY_H_ */
 /****************************************************************************

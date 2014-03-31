@@ -12,10 +12,12 @@
 #define CONDITION_RISKY "Risky"
 #define TEMP_THRESHOLD 24
 #define LIGHT_THRESHOLD 800
+#define ACC_TOLERANCE 3
 
 volatile uint32_t msTicks; // counter for 1ms SysTicks
 int resetFlag;
 int isSafe;
+uint8_t gAccRead;
 
 static void initEINT0Interupt() {
 	PINSEL_CFG_Type PinCfg;
@@ -187,4 +189,83 @@ void runTempAndLight(int* tempBool) {
 	displayTemp(tempRead,*tempBool);
 }
 
+/* The function below actually falls below the Active.h but due to the systick timer, its here */
+int calculateFreq(){
+	uint32_t runtime;
+	int8_t data[20];
+	int8_t finalData[17];
+	int numOfReadings = 0;
+	int numOfSamples = 0;
+	int frequency = 0;
+	int8_t x,y,z;
+	uint32_t start_time = msTicks;
+	
+	while(true){
+		runtime = msTicks - start_time;
+		if(runtime > 1000) break;
+		if(!(runtime%50)){ // get reading every 50ms
+			acc_read(&x,&y,&z);
+			data[numOfReadings++] = z;
+		}
+	}
 
+	for(int i=0;i<numOfReadings;i++){
+		int8_t temp[5];
+
+		for(int j=0;j<5;j++)
+			temp[j] = data[i+j];
+
+		quick_sort(temp,0,4);
+		finalData[numOfSamples++] = temp[2];
+	}
+
+
+	for(int i=0;i<numOfSamples;i++){
+		int isMovingUp;
+		int isMovingDown;
+		if(i==0){
+			isMovingUp = finalData[i] - gAccRead > ACC_TOLERANCE;
+			isMovingDown = gAccRead - finalData[i] > ACC_TOLERANCE;
+		} else{
+			if(isMovingUp){
+				isMovingUp = 0;
+				isMovingDown = gAccRead - finalData[i] > ACC_TOLERANCE;
+			} else if(isMovingDown){
+				isMovingDown = 0;
+				isMovingUp = finalData[i] - gAccRead > ACC_TOLERANCE;
+			}
+		}	
+
+		if(isMovingUp || isMovingDown)
+			frequency++;
+	}
+
+	return frequency;
+}
+
+void quick_sort(int8_t arr[5],int low,int high) {
+	int pivot,j,temp,i;
+ 	if(low<high) {
+  		pivot = low;
+  		i = low;
+  		j = high;
+ 
+  		while(i<j) {
+   			while((arr[i]<=arr[pivot])&&(i<high))
+    			i++; 			
+ 			while(arr[j]>arr[pivot])
+    			j--;
+		   	if(i<j) { 
+				temp=arr[i];
+		    	arr[i]=arr[j];
+		    	arr[j]=temp;
+		   	}
+  		}
+ 
+  		temp=arr[pivot];
+  		arr[pivot]=arr[j];
+  		arr[j]=temp;
+  		quick_sort(arr,low,j-1);
+  		quick_sort(arr,j+1,high);
+ 	}
+}
