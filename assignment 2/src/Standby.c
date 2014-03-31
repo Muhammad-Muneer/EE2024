@@ -10,7 +10,7 @@
 #define CONDITION_HOT "Hot   "
 #define CONDITION_SAFE "Safe "
 #define CONDITION_RISKY "Risky"
-#define TEMP_THRESHOLD 20
+#define TEMP_THRESHOLD 24
 #define LIGHT_THRESHOLD 800
 
 volatile uint32_t msTicks; // counter for 1ms SysTicks
@@ -30,7 +30,6 @@ static void initEINT0Interupt() {
 }
 
 void EINT0_IRQHandler () {
-	//printf("EINT0 IS CALLED\n");
 	if ((LPC_SC -> EXTINT) & 0x01) {
 		//printf("In EINT0: The reset button is pressed\n");
 		resetFlag = 1;
