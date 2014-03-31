@@ -243,7 +243,7 @@ int calculateFreq(){
 	return frequency;
 }
 
-void quick_sort(int8_t arr[5],int low,int high) {
+static void quick_sort(int8_t arr[5],int low,int high) {
 	int pivot,j,temp,i;
  	if(low<high) {
   		pivot = low;
