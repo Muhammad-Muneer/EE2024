@@ -29,9 +29,9 @@ int main() {
 					initActive();
 					while(1){
 						int freq = calculateFreq();
+						runActive(freq);
 						runTempAndLight(&isNormal);
 						//printf("Temp: %d, Rad: %d\n",isNormal,isSafe);
-						runActive(freq);
 						if (resetFlag)
 							break;
 						if(!isNormal || !isSafe){
