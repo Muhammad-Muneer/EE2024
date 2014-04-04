@@ -16,6 +16,8 @@
 int isFrequent;
 static int MODE;
 
+
+
 static void displayModeAct() {
 	char modeName[] = "Active ";
 	uint8_t i = 1;
@@ -27,6 +29,59 @@ static void displayModeAct() {
 static void displayActive() {
 	displayModeAct();
 	oled_putString(50,30,CONDITION_ACTIVE,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
+}
+
+static void initBuzzer(void)
+{
+// Initialize button
+	PINSEL_CFG_Type PinCfg;
+	PinCfg.Funcnum = 0;
+	PinCfg.OpenDrain = 0;
+	PinCfg.Pinmode = 0;
+	PinCfg.Portnum = 1;
+	PinCfg.Pinnum = 31;
+	PINSEL_ConfigPin(&PinCfg);
+	GPIO_SetDir(1, 1<<31, 0);
+
+	GPIO_SetDir(2, 1<<0, 1);
+    GPIO_SetDir(2, 1<<1, 1);
+
+    GPIO_SetDir(0, 1<<27, 1);
+    GPIO_SetDir(0, 1<<28, 1);
+    GPIO_SetDir(2, 1<<13, 1);
+    GPIO_SetDir(0, 1<<26, 1);
+
+    GPIO_ClearValue(0, 1<<27); //LM4811-clk
+    GPIO_ClearValue(0, 1<<28); //LM4811-up/dn
+    GPIO_ClearValue(2, 1<<13); //LM4811-shutdn
+}
+
+#define NOTE_PIN_HIGH() GPIO_SetValue(0, 1<<26);
+#define NOTE_PIN_LOW()  GPIO_ClearValue(0, 1<<26);
+
+static void playNote(uint32_t note, uint32_t durationMs) {
+
+    uint32_t t = 0;
+
+    if (note > 0) {
+
+        while (t < (durationMs*1000)) {
+            NOTE_PIN_HIGH();
+            Timer0_us_Wait(note / 2);
+            //delay32Us(0, note / 2);
+
+            NOTE_PIN_LOW();
+            Timer0_us_Wait(note / 2);
+            //delay32Us(0, note / 2);
+
+            t += note;
+        }
+
+    }
+    else {
+    	Timer0_Wait(durationMs);
+        //delay32Ms(0, durationMs);
+    }
 }
 
 static void enableAcc(){
@@ -42,9 +97,8 @@ void initActive() {
 	enableAcc();
 	disableSegment();
 	displayActive();
+	initBuzzer();
 	MODE = ACTIVE_MODE;
-	//LPC_GPIOINT -> IO2IntClr = 1<<5;
-	//light_clearIrqStatus();
 }
 
 static int safe(int freq){
@@ -90,6 +144,9 @@ void runActive(int freq){
 	}else{
 		isFrequent = 0;
 	}
+
+	if(isFrequent >= 3)
+		playNote(2272,1000);
 
 	if(isFrequent == 3 && MODE == ACTIVE_MODE){
 		enterWarningMode();

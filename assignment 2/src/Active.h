@@ -19,6 +19,7 @@
 #include "oled.h"
 #include "rgb.h"
 #include "temp.h"
+#include "lpc17xx_uart.h"
 #include <inttypes.h>
 #include <string.h>
 #include <stdio.h>
