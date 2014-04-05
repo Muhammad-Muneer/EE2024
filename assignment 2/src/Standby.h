@@ -18,6 +18,7 @@
 #include "joystick.h"
 #include "pca9532.h"
 #include "lpc17xx_nvic.h"
+#include "lpc17xx_uart.h"
 #include "acc.h"
 #include "oled.h"
 #include "rgb.h"
@@ -35,6 +36,7 @@ extern int resetFlag;
 extern int isSafe;
 extern uint8_t gAccRead;
 
+void handshake();
 void standbyInit();
 void runTempAndLight(int* tempBool);
 int calculateFreq();

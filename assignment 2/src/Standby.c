@@ -111,6 +111,67 @@ static void delay(uint32_t delay) {
 	while (msTicks - currentTime < delay);
 }
 
+void pinsel_uart3(void){
+	PINSEL_CFG_Type PinCfg;
+	PinCfg.Funcnum = 2;
+	PinCfg.Pinnum = 0;
+	PinCfg.Portnum = 0;
+	PINSEL_ConfigPin(&PinCfg);
+	PinCfg.Pinnum = 1;
+	PINSEL_ConfigPin(&PinCfg);
+}
+
+void init_uart(void){
+	UART_CFG_Type uartCfg;
+	uartCfg.Baud_rate = 115200;
+	uartCfg.Databits = UART_DATABIT_8;
+	uartCfg.Parity = UART_PARITY_NONE;
+	uartCfg.Stopbits = UART_STOPBIT_1;
+	//pin select for uart3;
+	pinsel_uart3();
+	//supply power & setup working par.s for uart3
+	UART_Init(LPC_UART3, &uartCfg);
+	//enable transmit for uart3
+	UART_TxCmd(LPC_UART3, ENABLE);
+}
+
+static void UARTStationReady() {
+	char* ready =  NULL;
+	ready = "RDY 036 \r\n";
+	UART_Send(LPC_UART3, (uint8_t *)ready , strlen(ready), BLOCKING);
+}
+
+static uint8_t* UARTStationRecieved() {
+	uint8_t data = 0;
+	uint32_t len = 0;
+	uint8_t line[64] = "";
+	uint32_t currTime = msTicks;
+
+	do
+	{
+		UART_Receive(LPC_UART3, &data, 1, NONE_BLOCKING);
+		if (data != '\r')
+		{
+			len++;
+			line[len-1] = data;
+		}
+	} while ((msTicks - currTime < 5000) && (len<64) && (data != '\r'));
+	return line;
+}
+
+void handshake() {
+	while (1) {
+		char* recievedMsg;
+		UARTStationReady();
+		recievedMsg = UARTStationRecieved();
+		if (!strcmp(recievedMsg,"RACK"))
+				break;
+	}
+	char ready[] =  "HSHK 036\r\n”";
+	UART_Send(LPC_UART3, (uint8_t *)ready , strlen(ready), BLOCKING);
+}
+
+
 static void countDown() {
 	char i;
 	if (SysTick_Config(SystemCoreClock / 1000)) {
@@ -149,6 +210,7 @@ void standbyInit(){
 	displayStandby();
 	enableResetBtn();
 	disableCalibratorBtn();
+	init_uart();
 	countDown();
 	initTemp();
 	initLight();
