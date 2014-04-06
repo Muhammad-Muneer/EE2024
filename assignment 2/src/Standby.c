@@ -86,10 +86,19 @@ static void displayStandby() {
 //  SysTick_Handler - just increment SysTick counter
 void SysTick_Handler(void) {
   	msTicks++;
- 	if(hasEstablished){ 
- 		if(UART_Receive(LPC_UART3, &data, 1, NONE_BLOCKING))
- 			buffer[buffer_counter] = data;
-	}
+  	uint8_t data;
+ 	if(hasEstablished){
+ 		if (buffer_counter >4) {
+ 			if (!strcmp(buffer,"RSTC\r")){
+ 				resetFlag = 1;
+ 		 	}
+ 		 	buffer_counter = 0;
+ 		 }
+ 		while (1) {
+ 			buffer[buffer_counter++] = UART_ReceiveData(LPC_UART3);
+ 		}
+ 	}
+
 }
 
 uint32_t getSystick(void){
