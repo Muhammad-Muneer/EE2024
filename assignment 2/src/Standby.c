@@ -135,50 +135,34 @@ void init_uart(void){
 	UART_TxCmd(LPC_UART3, ENABLE);
 }
 
-static void UARTStationReady() {
-	//char* ready =  NULL;
-	char* ready = "RDY 036 \r\n";
-	UART_Send(LPC_UART3, (uint8_t *)ready , strlen(ready), BLOCKING);
-}
-
-static uint8_t* UARTStationRecieved() {
+static uint8_t* acknowledged() {
 	uint8_t data = 0;
 	uint32_t len = 0;
+	uint32_t haveRecieved;
 	uint8_t line[64] = "";
 	uint32_t currTime = msTicks;
 
-	do
-	{
-		UART_Receive(LPC_UART3, &data, 1, NONE_BLOCKING);
-		if (data != '\r')
-		{
-			len++;
-			line[len-1] = data;
+	while ((msTicks - currTime < 5000) && (len<6) && (data != '\r')) {
+		haveRecieved = UART_Receive(LPC_UART3, &data, 1, NONE_BLOCKING);
+		if (haveRecieved != 0 && data != '\r') {
+			line[len++] = data;
 		}
-	} while ((msTicks - currTime < 5000) && (len<64) && (data != '\r'));
+	}
 	return line;
 }
 
 void handshake() {
-	int handshakeFlag = 0;
 	char* recievedMsg;
-	while (!handshakeFlag) {
-		UARTStationReady();
-		recievedMsg = UARTStationRecieved();
-		printf("%s\n", recievedMsg);
-	}
-
-	/*
+	char* ready = "RDY 036 \r\n";
+	char* established = "HSHK 036\r\n";
 	while (1) {
-		char* recievedMsg;
-		UARTStationReady();
-		recievedMsg = UARTStationRecieved();
-		printf("%s", recievedMsg);
+		UART_Send(LPC_UART3, (uint8_t *)ready , strlen(ready), BLOCKING);
+		recievedMsg = acknowledged();
+		printf("%s\n", recievedMsg);
 		if (!strcmp(recievedMsg,"RACK"))
-				break;
+			break;
 	}
-	char ready[] =  "HSHK 036\r\n”";
-	UART_Send(LPC_UART3, (uint8_t *)ready , strlen(ready), BLOCKING);*/
+	UART_Send(LPC_UART3, (uint8_t *)established , strlen(ready), BLOCKING);
 }
 
 
