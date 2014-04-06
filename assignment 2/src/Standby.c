@@ -17,6 +17,9 @@
 volatile uint32_t msTicks; // counter for 1ms SysTicks
 int resetFlag;
 int isSafe;
+int hasEstablished;
+char buffer[5];
+int buffer_counter;
 uint8_t gAccRead;
 
 static void initEINT0Interupt() {
@@ -82,7 +85,11 @@ static void displayStandby() {
 
 //  SysTick_Handler - just increment SysTick counter
 void SysTick_Handler(void) {
-  msTicks++;
+  	msTicks++;
+ 	if(hasEstablished){ 
+ 		if(UART_Receive(LPC_UART3, &data, 1, NONE_BLOCKING))
+ 			buffer[buffer_counter] = data;
+	}
 }
 
 uint32_t getSystick(void){
@@ -163,6 +170,7 @@ void handshake() {
 			break;
 	}
 	UART_Send(LPC_UART3, (uint8_t *)established , strlen(ready), BLOCKING);
+	hasEstablished = 1;
 }
 
 
@@ -199,15 +207,17 @@ static void disableAcc() {
 void standbyInit(){
 	resetFlag = 0;
 	isSafe = 1;
+	hasEstablished = 0;
+	buffer_counter = 0;
 	//printf("Inside standbyInit. Value is set to 1. IsSafe: %d\n",isSafe);
 	disableAcc();
 	displayStandby();
 	enableResetBtn();
 	disableCalibratorBtn();
 	init_uart();
-	countDown();
 	initTemp();
 	initLight();
+	countDown();
 	oled_putString(50,30,CONDITION_SAFE,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 }
 
