@@ -136,8 +136,8 @@ void init_uart(void){
 }
 
 static void UARTStationReady() {
-	char* ready =  NULL;
-	ready = "RDY 036 \r\n";
+	//char* ready =  NULL;
+	char* ready = "RDY 036 \r\n";
 	UART_Send(LPC_UART3, (uint8_t *)ready , strlen(ready), BLOCKING);
 }
 
@@ -160,15 +160,25 @@ static uint8_t* UARTStationRecieved() {
 }
 
 void handshake() {
+	int handshakeFlag = 0;
+	char* recievedMsg;
+	while (!handshakeFlag) {
+		UARTStationReady();
+		recievedMsg = UARTStationRecieved();
+		printf("%s\n", recievedMsg);
+	}
+
+	/*
 	while (1) {
 		char* recievedMsg;
 		UARTStationReady();
 		recievedMsg = UARTStationRecieved();
+		printf("%s", recievedMsg);
 		if (!strcmp(recievedMsg,"RACK"))
 				break;
 	}
 	char ready[] =  "HSHK 036\r\n”";
-	UART_Send(LPC_UART3, (uint8_t *)ready , strlen(ready), BLOCKING);
+	UART_Send(LPC_UART3, (uint8_t *)ready , strlen(ready), BLOCKING);*/
 }
 
 
