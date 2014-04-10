@@ -87,13 +87,14 @@ static void displayStandby() {
 void SysTick_Handler(void) {
   	msTicks++;
   	uint8_t data;
+ 	
  	if(hasEstablished){
  		if (buffer_counter >4) {
  			if (!strcmp(buffer,"RSTC\r")){
  				resetFlag = 1;
  		 	}
  		 	buffer_counter = 0;
- 		 }
+ 		}
  		while (1) {
  			buffer[buffer_counter++] = UART_ReceiveData(LPC_UART3);
  		}
@@ -327,16 +328,17 @@ int calculateFreq(){
 		if(!isInitialised){
 			if(finalData[i] > ACC_TOLERANCE + gAccRead){
 				isInitialised = 1;
-				isMovingUp = 1;
+				isMovingUp = 0;
 			}else if(finalData[i] < gAccRead - ACC_TOLERANCE){
 				isInitialised = 1;
-				isMovingUp = 0;
+				isMovingUp = 1;
 			}
 		}else{
-			if (finalData[i] > ACC_TOLERANCE + gAccRead && isMovingUp == 0)
+			if ((finalData[i] > ACC_TOLERANCE + gAccRead && isMovingUp == 1) || 
+				(finalData[i] < gAccRead - ACC_TOLERANCE  && isMovingUp == 0)){
 				frequency++;
-			else if (finalData[i] < gAccRead - ACC_TOLERANCE  && isMovingUp == 1)
-				frequency++;
+				isMovingUp = !isMovingUp;
+			}
 		}
 	}
 	uint32_t endTime = msTicks - start_time;
