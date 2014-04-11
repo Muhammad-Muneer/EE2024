@@ -150,6 +150,11 @@ void init_uart(void){
 	UART_Init(LPC_UART3, &uartCfg);
 	//enable transmit for uart3
 	UART_TxCmd(LPC_UART3, ENABLE);
+
+	// Below is for enabling UART interrupt
+	NVIC_EnableIRQ(UART3_IRQn);
+	UART_IntConfig(LPC_UART3, UART_INTCFG_RBR, ENABLE);
+	UART_SetupCbs(LPC_UART3, 0, UART_INTERRUPT); 
 }
 
 static uint8_t* acknowledged() {
@@ -186,9 +191,11 @@ void handshake() {
 
 static void countDown() {
 	char i;
+	
 	if (SysTick_Config(SystemCoreClock / 1000)) {
 		while (1);  // Capture error
 	}
+	
 	for (i='5'; i>='0';i--){
 		led7seg_setChar(i,FALSE);
 		if (resetFlag)
