@@ -36,10 +36,10 @@ extern int resetFlag;
 extern int isSafe;
 extern uint8_t gAccRead;
 
-void handshake();
 void standbyInit();
 void runTempAndLight(int* tempBool);
 int calculateFreq();
+void sendReadySignal()
 
 #endif /* STANDBY_H_ */
 /****************************************************************************

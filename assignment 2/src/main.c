@@ -23,9 +23,9 @@ int main() {
 		displayCalibrate();
 		if(isCalibrated(&gAccRead)){
 			standbyInit();
-			handshake();
 			while(1){
 				if (resetFlag) break;
+				sendReadySignal();
 				runTempAndLight(&isNormal);
 				if (isSafe && isNormal){
 					initActive();

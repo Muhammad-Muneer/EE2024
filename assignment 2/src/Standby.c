@@ -18,7 +18,8 @@ volatile uint32_t msTicks; // counter for 1ms SysTicks
 int resetFlag;
 int isSafe;
 int hasEstablished;
-char buffer[5];
+uint32_t timeForRdySig;
+uint8_t bufferForUART[5];
 int buffer_counter;
 uint8_t gAccRead;
 
@@ -36,7 +37,6 @@ static void initEINT0Interupt() {
 
 void EINT0_IRQHandler () {
 	if ((LPC_SC -> EXTINT) & 0x01) {
-		//printf("In EINT0: The reset button is pressed\n");
 		resetFlag = 1;
 		LPC_SC -> EXTINT = (1<<0);
 	}
@@ -154,29 +154,39 @@ void init_uart(void){
 	// Below is for enabling UART interrupt
 	NVIC_EnableIRQ(UART3_IRQn);
 	UART_IntConfig(LPC_UART3, UART_INTCFG_RBR, ENABLE);
-	UART_SetupCbs(LPC_UART3, 0, UART_INTERRUPT); 
+	UART_SetupCbs(LPC_UART3, 0, uartIntHandler); 
 }
 
-static uint8_t* acknowledged() {
-	uint8_t data = 0;
-	uint32_t len = 0;
+static void uartIntHandler(){
 	uint32_t haveRecieved;
-	uint8_t line[64] = "";
-	uint32_t currTime = msTicks;
-
-	while ((msTicks - currTime < 5000) && (len<6) && (data != '\r')) {
-		haveRecieved = UART_Receive(LPC_UART3, &data, 1, NONE_BLOCKING);
-		if (haveRecieved != 0 && data != '\r') {
-			line[len++] = data;
-		}
+	uint8_t data = 0;
+	haveRecieved = UART_Receive(LPC_UART3, &data, 1, NONE_BLOCKING);
+	if (haveRecieved != 0 && data != '\r') {
+		if (buffer_counter < 5)
+			bufferForUART[buffer_counter] = data;
+		buffer_counter++;
 	}
-	return line;
-}
 
-void handshake() {
-	char* recievedMsg;
-	char* ready = "RDY 036 \r\n";
-	char* established = "HSHK 036\r\n";
+	// checking for commands below
+
+	if(data == '\r'){
+		timeForRdySig = msTicks;
+		if (buffer_counter > 5){
+			clearBuffer();
+			break;
+		}
+
+		if(!strcmp(bufferForUART,"RNACK")){
+			printf("rnack is called");
+		} else if (!strcmp(bufferForUART,"RACK")){
+			printf("yeah established");
+			UART_Send(LPC_UART3, (uint8_t *)"HSHK 036\r\n" , strlen(ready), BLOCKING);
+			hasEstablished = 1;
+		}
+
+	}
+
+		char* established = "HSHK 036\r\n";
 	while (1) {
 		UART_Send(LPC_UART3, (uint8_t *)ready , strlen(ready), BLOCKING);
 		recievedMsg = acknowledged();
@@ -188,15 +198,26 @@ void handshake() {
 	hasEstablished = 1;
 }
 
+}
+
+static clearBuffer(){
+	int i;
+	for(i=0;i<5;i++)
+		bufferForUART[i] = '';
+}
+
+void sendReadySignal(){
+	if(!hasEstablished && msTicks - timeForRdySig > 5000){
+		UART_Send(LPC_UART3, (uint8_t *)"RDY 036 \r\n" , strlen(ready), BLOCKING);
+		timeForRdySig = msTicks;
+	}
+}
 
 static void countDown() {
 	char i;
-	
-	if (SysTick_Config(SystemCoreClock / 1000)) {
-		while (1);  // Capture error
-	}
-	
+	timeForRdySig = msTicks;
 	for (i='5'; i>='0';i--){
+		sendReadySignal();
 		led7seg_setChar(i,FALSE);
 		if (resetFlag)
 			break;
@@ -226,7 +247,8 @@ void standbyInit(){
 	isSafe = 1;
 	hasEstablished = 0;
 	buffer_counter = 0;
-	//printf("Inside standbyInit. Value is set to 1. IsSafe: %d\n",isSafe);
+	clearBuffer();
+	enableTime();
 	disableAcc();
 	displayStandby();
 	enableResetBtn();
@@ -236,6 +258,12 @@ void standbyInit(){
 	initLight();
 	countDown();
 	oled_putString(50,30,CONDITION_SAFE,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
+}
+
+static void enableTime(){
+	if (SysTick_Config(SystemCoreClock / 1000)) {
+		while (1);  // Capture error
+	}
 }
 
 static void displayTemp(int32_t temp,int isNormal){
