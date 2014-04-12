@@ -5,28 +5,32 @@
  */
 
 #include "Standby.h"
+#include "SysTime.h"
 
 #define CONDITION_NORMAL "Normal"
 #define CONDITION_HOT "Hot   "
 #define CONDITION_SAFE "Safe "
 #define CONDITION_RISKY "Risky"
-#define TEMP_THRESHOLD 32
+#define TEMP_THRESHOLD 30
 #define LIGHT_THRESHOLD 800
-#define ACC_TOLERANCE 2
 
-volatile uint32_t msTicks; // counter for 1ms SysTicks
+volatile uint32_t msTicks;
 int resetFlag;
+int standbyFlag;
 int isSafe;
 int hasEstablished;
 uint32_t timeForRdySig;
 uint8_t bufferForUART[5];
 int buffer_counter;
 uint8_t gAccRead;
+int UNSAFE_LOWER;
+int UNSAFE_UPPER;
+int TIME_WINDOW;
+int REPORTING_TIME;
 
-static void initEINT0Interupt() {
+static void initEINT0Interupt(){
 	PINSEL_CFG_Type PinCfg;
 
-	/* Initialize GPIO pin connect */
 	PinCfg.Funcnum = 1;
 	PinCfg.Pinnum = 10;
 	PinCfg.Portnum = 2;
@@ -83,29 +87,6 @@ static void displayStandby() {
 	oled_putString(50,30,CONDITION_SAFE,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 }
 
-//  SysTick_Handler - just increment SysTick counter
-void SysTick_Handler(void) {
-  	msTicks++;
-  	uint8_t data;
- 	
- 	if(hasEstablished){
- 		if (buffer_counter >4) {
- 			if (!strcmp(buffer,"RSTC\r")){
- 				resetFlag = 1;
- 		 	}
- 		 	buffer_counter = 0;
- 		}
- 		while (1) {
- 			buffer[buffer_counter++] = UART_ReceiveData(LPC_UART3);
- 		}
- 	}
-
-}
-
-uint32_t getSystick(void){
-	return msTicks;
-}
-
 static void initTemp() {
 	PINSEL_CFG_Type PinCfg;
 
@@ -122,12 +103,6 @@ static void initTemp() {
 	temp_init(&getSystick);
 }
 
-static void delay(uint32_t delay) {
-
-	uint32_t currentTime = msTicks;
-	while (msTicks - currentTime < delay);
-}
-
 void pinsel_uart3(void){
 	PINSEL_CFG_Type PinCfg;
 	PinCfg.Funcnum = 2;
@@ -136,6 +111,122 @@ void pinsel_uart3(void){
 	PINSEL_ConfigPin(&PinCfg);
 	PinCfg.Pinnum = 1;
 	PINSEL_ConfigPin(&PinCfg);
+}
+
+static void clearBuffer(){
+	int i;
+	for(i=0;i<5;i++)
+		bufferForUART[i] = '\0';
+}
+
+void UART_INTERUPT(){
+	uint32_t haveRecieved;
+	uint8_t data = 0;
+	haveRecieved = UART_Receive(LPC_UART3, &data, 1, NONE_BLOCKING);
+	if (haveRecieved != 0 && data != '\r') {
+		if (buffer_counter < 5)
+			bufferForUART[buffer_counter] = data;
+		else
+			return;
+		buffer_counter++;
+	}
+
+	// checking for commands below
+
+	if(data == '\r'){
+		timeForRdySig = msTicks;
+		if (buffer_counter > 5){
+			buffer_counter = 0;
+			clearBuffer();
+			return;
+		}
+
+		if(!strcmp(bufferForUART,"RNACK"))
+			UART_Send(LPC_UART3, (uint8_t *)"RDY 036 \r\n" , strlen("RDY 036 \r\n"), BLOCKING);
+		else if (!strcmp(bufferForUART,"RACK")){
+			UART_Send(LPC_UART3, (uint8_t *)"HSHK 036\r\n" ,strlen("HSHK 036\r\n"), BLOCKING);
+			hasEstablished = 1;
+		} else if (!strcmp(bufferForUART,"DEBUG")){
+			UART_Send(LPC_UART3, (uint8_t *)"NOT ESTABLISHED\r\n" ,strlen("NOT ESTABLISHED\r\n"), BLOCKING);
+			hasEstablished = 0;
+		} else if (!strcmp(bufferForUART,"RSTC")) {
+			UART_Send(LPC_UART3, (uint8_t *)"CACK\r\n" ,strlen("CACK\r\n"), BLOCKING);
+			resetFlag = 1;
+		}
+		else if (!strcmp(bufferForUART,"RSTS")) {
+			UART_Send(LPC_UART3, (uint8_t *)"SACK\r\n" ,strlen("SACK\r\n"), BLOCKING);
+			standbyFlag = 1;
+		}else if (strstr(bufferForUART,"UL ") != NULL ) {
+			if(isdigit(bufferForUART[3])){
+				int num  = (bufferForUART[3] - '0');
+				if(isdigit(bufferForUART[4])) num = num*10 + (bufferForUART[4] - '0');
+				if(num <= 0 || num >= UNSAFE_UPPER){
+					UART_Send(LPC_UART3, (uint8_t *)"YOU MAD BRO\r\n",strlen("YOU MAD BRO\r\n"), BLOCKING);
+				}else {
+					UNSAFE_LOWER = num;
+					char messageSuccess[25];
+					snprintf( messageSuccess, sizeof(messageSuccess), "UNSAFE LOWER IS NOW %d\r\n", UNSAFE_LOWER);
+					UART_Send(LPC_UART3, (uint8_t *)messageSuccess ,strlen(messageSuccess), BLOCKING);
+				}
+			} else {
+				UART_Send(LPC_UART3, (uint8_t *)"INVALID LA BRO\r\n" ,strlen("INVALID LA BRO\r\n" ), BLOCKING);
+			}
+		}else if (strstr(bufferForUART,"UU ") != NULL ) {
+			if(isdigit(bufferForUART[3])){
+				int num  = (bufferForUART[3] - '0');
+				if(isdigit(bufferForUART[4])) num = num*10 + (bufferForUART[4] - '0');
+				if(num <= UNSAFE_LOWER || num >= 20){
+					UART_Send(LPC_UART3, (uint8_t *)"YOU MAD BRO\r\n",strlen("YOU MAD BRO\r\n"), BLOCKING);
+				}else {
+					UNSAFE_UPPER = num;
+					char messageSuccess[25];
+					snprintf( messageSuccess, sizeof(messageSuccess), "UNSAFE UPPER IS NOW %d\r\n", UNSAFE_UPPER);
+					UART_Send(LPC_UART3, (uint8_t *)messageSuccess ,strlen(messageSuccess), BLOCKING);
+				}
+			} else {
+				UART_Send(LPC_UART3, (uint8_t *)"INVALID LA BRO\r\n" ,strlen("INVALID LA BRO\r\n" ), BLOCKING);
+			}
+		}else if (strstr(bufferForUART,"TW ") != NULL ) {
+			if(isdigit(bufferForUART[3])){
+				int num  = (bufferForUART[3] - '0');
+				if(isdigit(bufferForUART[4])) num = num*10 + (bufferForUART[4] - '0');
+				if(num <= 0 || num >= 5){
+					UART_Send(LPC_UART3, (uint8_t *)"YOU MAD BRO\r\n",strlen("YOU MAD BRO\r\n"), BLOCKING);
+				}else {
+					TIME_WINDOW = num;
+					char messageSuccess[25];
+					snprintf( messageSuccess, sizeof(messageSuccess), "TIME WINDOW IS NOW %d\r\n", TIME_WINDOW);
+					UART_Send(LPC_UART3, (uint8_t *)messageSuccess ,strlen(messageSuccess), BLOCKING);
+				}
+			} else {
+				UART_Send(LPC_UART3, (uint8_t *)"INVALID LA BRO\r\n" ,strlen("INVALID LA BRO\r\n" ), BLOCKING);
+			}
+		}else if (strstr(bufferForUART,"RT ") != NULL ) {
+			if(isdigit(bufferForUART[3])){
+				int num  = (bufferForUART[3] - '0');
+				if(isdigit(bufferForUART[4])) num = num*10 + (bufferForUART[4] - '0');
+				if(num <= 0 || num >= 10){
+					UART_Send(LPC_UART3, (uint8_t *)"YOU MAD BRO\r\n",strlen("YOU MAD BRO\r\n"), BLOCKING);
+				}else {
+					REPORTING_TIME = num;
+					char messageSuccess[25];
+					snprintf( messageSuccess, sizeof(messageSuccess), "REPORTING TIME IS NOW %d\r\n", REPORTING_TIME);
+					UART_Send(LPC_UART3, (uint8_t *)messageSuccess ,strlen(messageSuccess), BLOCKING);
+				}
+			} else {
+				UART_Send(LPC_UART3, (uint8_t *)"INVALID LA BRO\r\n" ,strlen("INVALID LA BRO\r\n" ), BLOCKING);
+			}
+		}
+		else {
+			UART_Send(LPC_UART3, (uint8_t *)"INVALID LA BRO\r\n" ,strlen("INVALID LA BRO\r\n"), BLOCKING);
+		}
+		buffer_counter = 0;
+		clearBuffer();
+	}
+}
+
+void UART3_IRQHandler(void) {
+	UART3_StdIntHandler();
 }
 
 void init_uart(void){
@@ -154,61 +245,12 @@ void init_uart(void){
 	// Below is for enabling UART interrupt
 	NVIC_EnableIRQ(UART3_IRQn);
 	UART_IntConfig(LPC_UART3, UART_INTCFG_RBR, ENABLE);
-	UART_SetupCbs(LPC_UART3, 0, uartIntHandler); 
-}
-
-static void uartIntHandler(){
-	uint32_t haveRecieved;
-	uint8_t data = 0;
-	haveRecieved = UART_Receive(LPC_UART3, &data, 1, NONE_BLOCKING);
-	if (haveRecieved != 0 && data != '\r') {
-		if (buffer_counter < 5)
-			bufferForUART[buffer_counter] = data;
-		buffer_counter++;
-	}
-
-	// checking for commands below
-
-	if(data == '\r'){
-		timeForRdySig = msTicks;
-		if (buffer_counter > 5){
-			clearBuffer();
-			break;
-		}
-
-		if(!strcmp(bufferForUART,"RNACK")){
-			printf("rnack is called");
-		} else if (!strcmp(bufferForUART,"RACK")){
-			printf("yeah established");
-			UART_Send(LPC_UART3, (uint8_t *)"HSHK 036\r\n" , strlen(ready), BLOCKING);
-			hasEstablished = 1;
-		}
-
-	}
-
-		char* established = "HSHK 036\r\n";
-	while (1) {
-		UART_Send(LPC_UART3, (uint8_t *)ready , strlen(ready), BLOCKING);
-		recievedMsg = acknowledged();
-		printf("%s\n", recievedMsg);
-		if (!strcmp(recievedMsg,"RACK"))
-			break;
-	}
-	UART_Send(LPC_UART3, (uint8_t *)established , strlen(ready), BLOCKING);
-	hasEstablished = 1;
-}
-
-}
-
-static clearBuffer(){
-	int i;
-	for(i=0;i<5;i++)
-		bufferForUART[i] = '';
+	UART_SetupCbs(LPC_UART3, 0, UART_INTERUPT);
 }
 
 void sendReadySignal(){
 	if(!hasEstablished && msTicks - timeForRdySig > 5000){
-		UART_Send(LPC_UART3, (uint8_t *)"RDY 036 \r\n" , strlen(ready), BLOCKING);
+		UART_Send(LPC_UART3, (uint8_t *)"RDY 036 \r\n" , strlen("RDY 036 \r\n"), BLOCKING);
 		timeForRdySig = msTicks;
 	}
 }
@@ -234,7 +276,6 @@ void initLight() {
 	LPC_GPIOINT -> IO2IntEnF |= 1<<5;
 	light_setHiThreshold(800);
 	light_setLoThreshold(0);
-	//light_setIrqInCycles(2);
 	NVIC_EnableIRQ(EINT3_IRQn);
 }
 
@@ -243,6 +284,7 @@ static void disableAcc() {
 }
 
 void standbyInit(){
+	standbyFlag = 0;
 	resetFlag = 0;
 	isSafe = 1;
 	hasEstablished = 0;
@@ -260,13 +302,7 @@ void standbyInit(){
 	oled_putString(50,30,CONDITION_SAFE,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 }
 
-static void enableTime(){
-	if (SysTick_Config(SystemCoreClock / 1000)) {
-		while (1);  // Capture error
-	}
-}
-
-static void displayTemp(int32_t temp,int isNormal){
+static void displayTemp(int32_t temp,int isNormal) {
 	uint8_t i = 30;
 	uint8_t j = 15;
 	int counter = 0;
@@ -294,7 +330,7 @@ static void displayTemp(int32_t temp,int isNormal){
 		oled_putString(50,30,CONDITION_RISKY,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 }
 
-void runTempAndLight(int* tempBool) {
+void runTemp(int* tempBool) {
 	int32_t tempRead = temp_read();
 	*tempBool = (tempRead/10.0 < TEMP_THRESHOLD);
 	displayTemp(tempRead,*tempBool);
@@ -325,58 +361,4 @@ static void quick_sort(int8_t arr[5],int low,int high) {
   		quick_sort(arr,low,j-1);
   		quick_sort(arr,j+1,high);
  	}
-}
-
-/* The function below actually falls below the Active.h but due to the systick timer, its here */
-int calculateFreq(){
-	int i, j;
-	uint32_t runtime;
-	int data[41];
-	int finalData[37];
-	int numOfReadings = 0;
-	int numOfSamples = 0;
-	int frequency = 0;
-	int8_t x,y,z;
-	int isMovingUp;
-	int isInitialised = 0;
-	uint32_t start_time = msTicks;
-	while(1){
-		runtime = msTicks - start_time;
-		if(runtime > 1000) break;
-		if(!(runtime%50)){ // get reading every 50ms
-			acc_read(&x,&y,&z);
-			data[numOfReadings++] = z;
-		}
-	}
-
-	for(i=0;i<numOfReadings-4;i++){
-		int8_t temp[5];
-
-		for(j=0;j<5;j++)
-			temp[j] = data[i+j];
-
-		quick_sort(temp,0,4);
-		finalData[numOfSamples++] = temp[2];
-	}
-
-	for(i=0;i<numOfSamples;i++){
-		if(!isInitialised){
-			if(finalData[i] > ACC_TOLERANCE + gAccRead){
-				isInitialised = 1;
-				isMovingUp = 0;
-			}else if(finalData[i] < gAccRead - ACC_TOLERANCE){
-				isInitialised = 1;
-				isMovingUp = 1;
-			}
-		}else{
-			if ((finalData[i] > ACC_TOLERANCE + gAccRead && isMovingUp == 1) || 
-				(finalData[i] < gAccRead - ACC_TOLERANCE  && isMovingUp == 0)){
-				frequency++;
-				isMovingUp = !isMovingUp;
-			}
-		}
-	}
-	uint32_t endTime = msTicks - start_time;
-	printf("The calculation takes %d ms\n",endTime);
-	return frequency;
 }

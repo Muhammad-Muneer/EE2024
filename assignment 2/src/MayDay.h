@@ -3,8 +3,8 @@
  *   Author: Muhammad Muneer & Nicholas Chew
  *
 ******************************************************************************/
-#ifndef __ACTIVE_H
-#define __ACTIVE_H
+#ifndef __MAYDAY_H
+#define __MAYDAY_H
 
 #include "lpc17xx_pinsel.h"
 #include "lpc17xx_gpio.h"
@@ -25,19 +25,9 @@
 #include <string.h>
 #include <stdio.h>
 
-extern uint8_t gAccRead; 
-extern int isFrequent;
-void initActive();
-void runActive(int freq);
-void switchDisplayToStandby();
-void switchDisplayToCalibrate();
-void switchDisplayToMayDay();
-int calculateFreq();
-void resetTimeForActSig();
-void sendActiveSignal();
-void setVariables();
+void initMayDay();
 
-#endif /* end __ACTIVE_H */
+#endif /* end __MAYDAY_H */
 /****************************************************************************
 **                            End Of File
 *****************************************************************************/

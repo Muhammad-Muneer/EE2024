@@ -11,13 +11,18 @@
 #include "Calibration.h"
 #include "Standby.h"
 #include "Active.h"
+#include "MayDay.h"
 
 int resetFlag;
+int standbyFlag;
 int isSafe;
 uint8_t gAccRead;
+int hasEstablished;
+int isMayDay;
 
 int main() {
 	int isNormal;
+	setVariables();
 	while (1) {
 		calibrateInit();
 		displayCalibrate();
@@ -26,18 +31,23 @@ int main() {
 			while(1){
 				if (resetFlag) break;
 				sendReadySignal();
-				runTempAndLight(&isNormal);
-				if (isSafe && isNormal){
+				runTemp(&isNormal);
+				if (isSafe && isNormal  && hasEstablished){
 					initActive();
 					while(1){
 						int freq = calculateFreq();
-						printf("frequency: %d\n", freq);
 						runActive(freq);
-						runTempAndLight(&isNormal);
-						//printf("Temp: %d, Rad: %d\n",isNormal,isSafe);
+						runTemp(&isNormal);
 						if (resetFlag)
 							break;
-						if(!isNormal || !isSafe){
+
+						if(isMayDay){
+							switchDisplayToMayDay();
+							break;
+						}
+
+						if(!isNormal || !isSafe || standbyFlag){
+							standbyFlag = 0;
 							switchDisplayToStandby();
 							break;
 						}
@@ -45,6 +55,13 @@ int main() {
 					if(resetFlag){
 						switchDisplayToCalibrate();
 						break;
+					}
+
+					if(isMayDay){
+						initMayDay();
+						while(1){
+							//inMayDay
+						}
 					}
 				}
 			}

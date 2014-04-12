@@ -27,19 +27,19 @@
 #include <inttypes.h>
 #include <string.h>
 #include <stdio.h>
+#include <ctype.h>
 
 #define CONDITION_SAFE "Safe "
 #define CONDITION_RISKY "Risky"
-
 
 extern int resetFlag;
 extern int isSafe;
 extern uint8_t gAccRead;
 
 void standbyInit();
-void runTempAndLight(int* tempBool);
-int calculateFreq();
-void sendReadySignal()
+void runTemp(int* tempBool);
+void sendReadySignal();
+
 
 #endif /* STANDBY_H_ */
 /****************************************************************************

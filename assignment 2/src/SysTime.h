@@ -1,10 +1,10 @@
 /*****************************************************************************
- *   Active.h:  Header file for Active mode
+ *   Active.h:  Header file for System Time
  *   Author: Muhammad Muneer & Nicholas Chew
  *
 ******************************************************************************/
-#ifndef __ACTIVE_H
-#define __ACTIVE_H
+#ifndef SYSTIME_H_
+#define SYSTIME_H
 
 #include "lpc17xx_pinsel.h"
 #include "lpc17xx_gpio.h"
@@ -25,19 +25,20 @@
 #include <string.h>
 #include <stdio.h>
 
-extern uint8_t gAccRead; 
-extern int isFrequent;
-void initActive();
-void runActive(int freq);
-void switchDisplayToStandby();
-void switchDisplayToCalibrate();
-void switchDisplayToMayDay();
-int calculateFreq();
-void resetTimeForActSig();
-void sendActiveSignal();
-void setVariables();
+extern volatile uint32_t msTicks;
+extern int UNSAFE_LOWER;
+extern int UNSAFE_UPPER;
+extern int TIME_WINDOW;
+extern int REPORTING_TIME;
+extern int isMayDay;
+
+void SysTick_Handler();
+uint32_t getSystick();
+void delay(uint32_t delay);
+void enableTime();
 
 #endif /* end __ACTIVE_H */
 /****************************************************************************
 **                            End Of File
 *****************************************************************************/
+

@@ -1,22 +1,23 @@
-/*
- * Active.c
- *
- *  Created on: 23-Mar-2014
- *      Author: AdminNUS
- */
-
 #include "Active.h"
+#include "SysTime.h"
+
 #define WARNING_MODE 1
 #define ACTIVE_MODE 0
-#define UNSAFE_LOWER 2
-#define UNSAFE_UPPER 10
+#define ACC_TOLERANCE 2
 #define CONDITION_SAFE "Safe "
-#define CONDITION_ACTIVE "Active"
+#define CONDITION_ACTIVE "Risky"
+#define NOTE_PIN_HIGH() GPIO_SetValue(0, 1<<26);
+#define NOTE_PIN_LOW()  GPIO_ClearValue(0, 1<<26);
 
 int isFrequent;
 static int MODE;
-
-
+volatile uint32_t msTicks;
+int UNSAFE_LOWER;
+int UNSAFE_UPPER;
+int TIME_WINDOW;
+int REPORTING_TIME;
+int reportingTimeFlag;
+int isMayDay;
 
 static void displayModeAct() {
 	char modeName[] = "Active ";
@@ -31,8 +32,7 @@ static void displayActive() {
 	oled_putString(50,30,CONDITION_ACTIVE,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 }
 
-static void initBuzzer(void)
-{
+static void initBuzzer(void) {
 // Initialize button
 	PINSEL_CFG_Type PinCfg;
 	PinCfg.Funcnum = 0;
@@ -56,9 +56,6 @@ static void initBuzzer(void)
     GPIO_ClearValue(2, 1<<13); //LM4811-shutdn
 }
 
-#define NOTE_PIN_HIGH() GPIO_SetValue(0, 1<<26);
-#define NOTE_PIN_LOW()  GPIO_ClearValue(0, 1<<26);
-
 static void playNote(uint32_t note, uint32_t durationMs) {
 
     uint32_t t = 0;
@@ -68,19 +65,13 @@ static void playNote(uint32_t note, uint32_t durationMs) {
         while (t < (durationMs*1000)) {
             NOTE_PIN_HIGH();
             Timer0_us_Wait(note / 2);
-            //delay32Us(0, note / 2);
-
             NOTE_PIN_LOW();
             Timer0_us_Wait(note / 2);
-            //delay32Us(0, note / 2);
-
             t += note;
         }
-
     }
     else {
     	Timer0_Wait(durationMs);
-        //delay32Ms(0, durationMs);
     }
 }
 
@@ -94,11 +85,13 @@ static void disableSegment(){
 
 void initActive() {
 	isFrequent = 0;
+	isMayDay = 0;
 	enableAcc();
 	disableSegment();
 	displayActive();
 	initBuzzer();
 	MODE = ACTIVE_MODE;
+	reportingTimeFlag = msTicks;
 }
 
 static int safe(int freq){
@@ -137,20 +130,36 @@ void leaveWarningMode(){
 	disableRedLed();
 }
 
+static void sendUARTAct(int freq) {
+	if(msTicks - reportingTimeFlag > REPORTING_TIME * 1000){
+		reportingTimeFlag = msTicks;
+		if (MODE==WARNING_MODE) {
+			char messageWarning[16];
+			snprintf( messageWarning, sizeof(messageWarning), "013 %02d WARNING\r\n", freq);
+			UART_Send(LPC_UART3, (uint8_t *)messageWarning ,strlen(messageWarning), BLOCKING);
+		}
+		else if (MODE==ACTIVE_MODE) {
+			char messageActive[8];
+			snprintf( messageActive, sizeof(messageActive), "036 %02d\r\n", freq);
+			UART_Send(LPC_UART3, (uint8_t *)messageActive ,strlen(messageActive), BLOCKING);
+		}
+	}
+}
 
 void runActive(int freq){
+	sendUARTAct(freq);
 	if(!safe(freq)){
 		isFrequent++;
 	}else{
 		isFrequent = 0;
 	}
-
-	if(isFrequent >= 3)
+	if(isFrequent > 5) isMayDay = 1;
+	if(isFrequent >= TIME_WINDOW)
 		playNote(2272,1000);
 
-	if(isFrequent == 3 && MODE == ACTIVE_MODE){
+	if(isFrequent == TIME_WINDOW && MODE == ACTIVE_MODE){
 		enterWarningMode();
-	}else if(isFrequent < 3 && MODE == WARNING_MODE){
+	}else if(isFrequent < TIME_WINDOW && MODE == WARNING_MODE){
 		leaveWarningMode();
 	}
 }
@@ -166,9 +175,105 @@ void switchDisplayToStandby() {
 	}
 }
 
+void switchDisplayToMayDay(){
+	char modeName[] = "MAYDAY ";
+	uint8_t i = 96/2 - 7*6/2 ;
+	uint8_t j = 64/2 - 3;
+	oled_putString(i,j,modeName,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
+	//oled_putString(50,30,CONDITION_SAFE,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
+	if(MODE==WARNING_MODE){
+		leaveWarningMode();
+	}
+}
+
 void switchDisplayToCalibrate(){
 	if(MODE==WARNING_MODE){
 		leaveWarningMode();
 	}
 }
 
+static void quick_sort(int8_t arr[5],int low,int high) {
+	int pivot,j,temp,i;
+ 	if(low<high) {
+  		pivot = low;
+  		i = low;
+  		j = high;
+
+  		while(i<j) {
+   			while((arr[i]<=arr[pivot])&&(i<high))
+    			i++;
+ 			while(arr[j]>arr[pivot])
+    			j--;
+		   	if(i<j) {
+				temp=arr[i];
+		    	arr[i]=arr[j];
+		    	arr[j]=temp;
+		   	}
+  		}
+
+  		temp=arr[pivot];
+  		arr[pivot]=arr[j];
+  		arr[j]=temp;
+  		quick_sort(arr,low,j-1);
+  		quick_sort(arr,j+1,high);
+ 	}
+}
+
+int calculateFreq(){
+	int i, j;
+	uint32_t runtime;
+	int data[41];
+	int finalData[37];
+	int numOfReadings = 0;
+	int numOfSamples = 0;
+	int frequency = 0;
+	int8_t x,y,z;
+	int isMovingUp;
+	int isInitialised = 0;
+	uint32_t start_time = msTicks;
+	while(1){
+		runtime = msTicks - start_time;
+		if(runtime > 1000) break;
+		if(!(runtime%50)){ // get reading every 50ms
+			acc_read(&x,&y,&z);
+			data[numOfReadings++] = z;
+		}
+	}
+
+	for(i=0;i<numOfReadings-4;i++){
+		int8_t temp[5];
+
+		for(j=0;j<5;j++)
+			temp[j] = data[i+j];
+
+		quick_sort(temp,0,4);
+		finalData[numOfSamples++] = temp[2];
+	}
+
+	for(i=0;i<numOfSamples;i++){
+		if(!isInitialised){
+			if(finalData[i] > ACC_TOLERANCE + gAccRead){
+				isInitialised = 1;
+				isMovingUp = 0;
+			}else if(finalData[i] < gAccRead - ACC_TOLERANCE){
+				isInitialised = 1;
+				isMovingUp = 1;
+			}
+		}else{
+			if ((finalData[i] > ACC_TOLERANCE + gAccRead && isMovingUp == 1) ||
+				(finalData[i] < gAccRead - ACC_TOLERANCE  && isMovingUp == 0)){
+				frequency++;
+				isMovingUp = !isMovingUp;
+			}
+		}
+	}
+	uint32_t endTime = msTicks - start_time;
+	return frequency;
+}
+
+void setVariables() {
+	UNSAFE_LOWER = 2;
+	UNSAFE_UPPER = 10;
+	TIME_WINDOW = 3;
+	REPORTING_TIME = 1;
+}
