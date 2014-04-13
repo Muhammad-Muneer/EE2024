@@ -15,14 +15,14 @@
 #include "led7seg.h"
 #include "lpc17xx_nvic.h"
 #include "rgb.h"
-
+#include "pca9532.h"
 #include "acc.h"
 #include "oled.h"
 #include <string.h>
 
 void calibrateInit(void);
 void displayCalibrate();
-uint8_t isCalibrated(int8_t* accReading);
+uint8_t isCalibrated(uint8_t* accReading);
 uint8_t isResetted();
 
 #endif /* end __CALIBRATE_H */

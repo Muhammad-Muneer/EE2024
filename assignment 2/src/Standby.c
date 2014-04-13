@@ -11,8 +11,14 @@
 #define CONDITION_HOT "Hot   "
 #define CONDITION_SAFE "Safe "
 #define CONDITION_RISKY "Risky"
-#define TEMP_THRESHOLD 30
+#define TEMP_THRESHOLD 33
 #define LIGHT_THRESHOLD 800
+#define LIGHT_LOW 0
+#define LIGHT_HIGH 3891
+#define MODE_NAME_X 1
+#define MODE_NAME_Y 1
+#define LIGHT_X 50
+#define LIGHT_Y 30
 
 volatile uint32_t msTicks;
 int resetFlag;
@@ -27,6 +33,8 @@ int UNSAFE_LOWER;
 int UNSAFE_UPPER;
 int TIME_WINDOW;
 int REPORTING_TIME;
+int distressResponse;
+int isInAccRead;
 
 static void initEINT0Interupt(){
 	PINSEL_CFG_Type PinCfg;
@@ -48,19 +56,19 @@ void EINT0_IRQHandler () {
 
 void  EINT3_IRQHandler() {
 	if ((LPC_GPIOINT -> IO2IntStatF>>5) & 0x01) {
-		NVIC_DisableIRQ(EINT3_IRQn);
-		isSafe = !isSafe;
-		if (isSafe) {
-			light_setLoThreshold(0);
-			light_setHiThreshold(800);
-		}
-		else {
-			light_setHiThreshold(3891);
-			light_setLoThreshold(800);
+		if(!isInAccRead){
+			isSafe = !isSafe;
+			if (isSafe) {
+				light_setLoThreshold(LIGHT_LOW);
+				light_setHiThreshold(LIGHT_THRESHOLD );
+			}
+			else {
+				light_setHiThreshold(LIGHT_HIGH);
+				light_setLoThreshold(LIGHT_THRESHOLD );
+			}
 		}
 		LPC_GPIOINT -> IO2IntClr = 1<<5;
 		light_clearIrqStatus();
-		NVIC_EnableIRQ(EINT3_IRQn);
 	}
 }
 
@@ -75,16 +83,14 @@ static void disableCalibratorBtn() {
 }
 
 static void displayModeName() {
-	char modeName[] = "Standby";
-	uint8_t i = 1;
-	uint8_t j = 1;
-	oled_putString(i,j,modeName,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
+	oled_putString(MODE_NAME_X,MODE_NAME_Y,(uint8_t*)"Standby",OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 }
 
 static void displayStandby() {
+	oled_init();
 	oled_clearScreen(OLED_COLOR_BLACK);
 	displayModeName();
-	oled_putString(50,30,CONDITION_SAFE,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
+	oled_putString(LIGHT_X,LIGHT_Y,(uint8_t*)CONDITION_SAFE,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 }
 
 static void initTemp() {
@@ -216,6 +222,8 @@ void UART_INTERUPT(){
 			} else {
 				UART_Send(LPC_UART3, (uint8_t *)"INVALID LA BRO\r\n" ,strlen("INVALID LA BRO\r\n" ), BLOCKING);
 			}
+		} else if (!strcmp(bufferForUART,"HELP")) {
+			distressResponse = 1;
 		}
 		else {
 			UART_Send(LPC_UART3, (uint8_t *)"INVALID LA BRO\r\n" ,strlen("INVALID LA BRO\r\n"), BLOCKING);
@@ -255,15 +263,19 @@ void sendReadySignal(){
 	}
 }
 
-static void countDown() {
+void countDown() {
 	char i;
-	timeForRdySig = msTicks;
+	timeForRdySig = msTicks; //initialising
 	for (i='5'; i>='0';i--){
 		sendReadySignal();
 		led7seg_setChar(i,FALSE);
 		if (resetFlag)
 			break;
 		delay(1000);
+		if(isSafe)
+			oled_putString(LIGHT_X,LIGHT_Y,(uint8_t*)CONDITION_SAFE,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
+		else
+			oled_putString(LIGHT_X,LIGHT_Y,(uint8_t*)CONDITION_RISKY,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 	}
 }
 
@@ -289,6 +301,7 @@ void standbyInit(){
 	isSafe = 1;
 	hasEstablished = 0;
 	buffer_counter = 0;
+	isInAccRead = 0;
 	clearBuffer();
 	enableTime();
 	disableAcc();
@@ -298,8 +311,6 @@ void standbyInit(){
 	init_uart();
 	initTemp();
 	initLight();
-	countDown();
-	oled_putString(50,30,CONDITION_SAFE,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 }
 
 static void displayTemp(int32_t temp,int isNormal) {
@@ -321,44 +332,17 @@ static void displayTemp(int32_t temp,int isNormal) {
 	}
 
 	if(isNormal)
-		oled_putString(50,j,CONDITION_NORMAL,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
+		oled_putString(LIGHT_X,j,(uint8_t*)CONDITION_NORMAL,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 	else
-		oled_putString(50,j,CONDITION_HOT,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
+		oled_putString(LIGHT_X,j,(uint8_t*)CONDITION_HOT,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 	if(isSafe)
-		oled_putString(50,30,CONDITION_SAFE,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
+		oled_putString(LIGHT_X,LIGHT_Y,(uint8_t*)CONDITION_SAFE,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 	else
-		oled_putString(50,30,CONDITION_RISKY,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
+		oled_putString(LIGHT_X,LIGHT_Y,(uint8_t*)CONDITION_RISKY,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 }
 
 void runTemp(int* tempBool) {
 	int32_t tempRead = temp_read();
 	*tempBool = (tempRead/10.0 < TEMP_THRESHOLD);
 	displayTemp(tempRead,*tempBool);
-}
-
-static void quick_sort(int8_t arr[5],int low,int high) {
-	int pivot,j,temp,i;
- 	if(low<high) {
-  		pivot = low;
-  		i = low;
-  		j = high;
-
-  		while(i<j) {
-   			while((arr[i]<=arr[pivot])&&(i<high))
-    			i++;
- 			while(arr[j]>arr[pivot])
-    			j--;
-		   	if(i<j) {
-				temp=arr[i];
-		    	arr[i]=arr[j];
-		    	arr[j]=temp;
-		   	}
-  		}
-
-  		temp=arr[pivot];
-  		arr[pivot]=arr[j];
-  		arr[j]=temp;
-  		quick_sort(arr,low,j-1);
-  		quick_sort(arr,j+1,high);
- 	}
 }

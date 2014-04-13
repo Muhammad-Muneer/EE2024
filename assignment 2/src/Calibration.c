@@ -9,6 +9,9 @@
 #include "Calibration.h"
 #include <stdio.h>
 
+#define MODE_NAME_X 1
+#define MODE_NAME_Y 1
+
 static void initI2C() {
 	PINSEL_CFG_Type PinCfg;
 
@@ -72,21 +75,17 @@ static void initOled() {
 }
 
 static void displayMode() {
-	char modeName[] = "Calibration";
-	uint8_t i = 1;
-	uint8_t j = 1;
-	oled_putString(i,j,modeName,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
+	oled_putString(MODE_NAME_X,MODE_NAME_Y,(uint8_t*)"Calibration",OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 }
 
 static void displayGravitationalAcc() {
 	int8_t x,y,z;
 	int isNegative = 0;
 	acc_read(&x,&y,&z);
-	printf("%d\n",z- 80);
 	char str[10] = "Z: ";
 	uint8_t i = 1;
 	uint8_t j = 15;
-	oled_putString(i,j,str,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
+	oled_putString(i,j,(uint8_t*)str,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 	i += 30;
 	if(z==0){
 		oled_putChar(i,j,'0',OLED_COLOR_WHITE,OLED_COLOR_BLACK);
@@ -117,8 +116,6 @@ void displayCalibrate() {
 	oled_clearScreen(OLED_COLOR_BLACK);
 	displayMode();
 	displayGravitationalAcc();
-	int i=0;
-	for (i=0; i <10000000; i++);
 }
 
 static void disableResetBtn() {
@@ -156,6 +153,9 @@ static void disableRGB() {
 	PinCfg.Pinmode = 0;
 	PINSEL_ConfigPin(&PinCfg);
 
+	// The RGB LED Library contained some
+	// error, we changed it so that the library
+	// function can be used.
 	rgb_init();
 	rgb_setLeds(0);
 }
@@ -172,11 +172,11 @@ void calibrateInit(void) {
 	disableResetBtn();
 	enableCalibrateBtn();
 	initAccelerometer();
-//	disableLEDS();
+	disableLEDS();
 	initOled();
 }
 
-uint8_t isCalibrated(int8_t* accReading){
+uint8_t isCalibrated(uint8_t* accReading){
 	int8_t x,y,z;
 	acc_read(&x,&y,&z);
 	uint8_t input = (GPIO_ReadValue(1)>>31)&0x01;

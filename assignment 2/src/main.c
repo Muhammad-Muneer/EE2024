@@ -28,11 +28,12 @@ int main() {
 		displayCalibrate();
 		if(isCalibrated(&gAccRead)){
 			standbyInit();
+			countDown();
 			while(1){
 				if (resetFlag) break;
 				sendReadySignal();
 				runTemp(&isNormal);
-				if (isSafe && isNormal  && hasEstablished){
+				if (isSafe && isNormal && hasEstablished){
 					initActive();
 					while(1){
 						int freq = calculateFreq();
@@ -49,6 +50,7 @@ int main() {
 						if(!isNormal || !isSafe || standbyFlag){
 							standbyFlag = 0;
 							switchDisplayToStandby();
+							countDown();
 							break;
 						}
 					}
@@ -59,9 +61,10 @@ int main() {
 
 					if(isMayDay){
 						initMayDay();
-						while(1){
-							//inMayDay
-						}
+						runMayDay();
+						initLight();
+						switchDisplayToStandby();
+						countDown();
 					}
 				}
 			}

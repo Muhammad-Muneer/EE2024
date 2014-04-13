@@ -4,11 +4,13 @@
 #define WARNING_MODE 1
 #define ACTIVE_MODE 0
 #define ACC_TOLERANCE 2
-#define CONDITION_SAFE "Safe "
-#define CONDITION_ACTIVE "Risky"
+#define MAYDAY_THRESHOLD 5
 #define NOTE_PIN_HIGH() GPIO_SetValue(0, 1<<26);
 #define NOTE_PIN_LOW()  GPIO_ClearValue(0, 1<<26);
+#define MODE_NAME_X 1
+#define MODE_NAME_Y 1
 
+int isInAccRead;
 int isFrequent;
 static int MODE;
 volatile uint32_t msTicks;
@@ -19,17 +21,8 @@ int REPORTING_TIME;
 int reportingTimeFlag;
 int isMayDay;
 
-static void displayModeAct() {
-	char modeName[] = "Active ";
-	uint8_t i = 1;
-	uint8_t j = 1;
-	oled_putString(i,j,modeName,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
-	oled_putString(50,30,CONDITION_SAFE,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
-}
-
 static void displayActive() {
-	displayModeAct();
-	oled_putString(50,30,CONDITION_ACTIVE,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
+	oled_putString(MODE_NAME_X,MODE_NAME_Y,(uint8_t*)"Active ",OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 }
 
 static void initBuzzer(void) {
@@ -153,34 +146,30 @@ void runActive(int freq){
 	}else{
 		isFrequent = 0;
 	}
-	if(isFrequent > 5) isMayDay = 1;
-	if(isFrequent >= TIME_WINDOW)
-		playNote(2272,1000);
+	if(isFrequent > MAYDAY_THRESHOLD) isMayDay = 1;
 
 	if(isFrequent == TIME_WINDOW && MODE == ACTIVE_MODE){
 		enterWarningMode();
 	}else if(isFrequent < TIME_WINDOW && MODE == WARNING_MODE){
 		leaveWarningMode();
 	}
+
+	if(isFrequent >= TIME_WINDOW)
+		playNote(2272,1000);
 }
 
 void switchDisplayToStandby() {
-	char modeName[] = "Standby";
-	uint8_t i = 1;
-	uint8_t j = 1;
-	oled_putString(i,j,modeName,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
-	oled_putString(50,30,CONDITION_SAFE,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
+	oled_putString(MODE_NAME_X,MODE_NAME_Y,(uint8_t*)"Standby",OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 	if(MODE==WARNING_MODE){
 		leaveWarningMode();
 	}
 }
 
 void switchDisplayToMayDay(){
-	char modeName[] = "MAYDAY ";
-	uint8_t i = 96/2 - 7*6/2 ;
-	uint8_t j = 64/2 - 3;
-	oled_putString(i,j,modeName,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
-	//oled_putString(50,30,CONDITION_SAFE,OLED_COLOR_WHITE,OLED_COLOR_BLACK);
+	oled_clearScreen(OLED_COLOR_BLACK);
+	uint8_t x_center = 96/2 - 7*6/2 ;
+	uint8_t y_center = 64/2 - 3;
+	oled_putString(x_center,y_center,(uint8_t*)"MAYDAY ",OLED_COLOR_WHITE,OLED_COLOR_BLACK);
 	if(MODE==WARNING_MODE){
 		leaveWarningMode();
 	}
@@ -235,7 +224,9 @@ int calculateFreq(){
 		runtime = msTicks - start_time;
 		if(runtime > 1000) break;
 		if(!(runtime%50)){ // get reading every 50ms
+			isInAccRead = 1;
 			acc_read(&x,&y,&z);
+			isInAccRead = 0;
 			data[numOfReadings++] = z;
 		}
 	}
@@ -267,7 +258,6 @@ int calculateFreq(){
 			}
 		}
 	}
-	uint32_t endTime = msTicks - start_time;
 	return frequency;
 }
 
